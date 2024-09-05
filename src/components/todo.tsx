@@ -1,10 +1,5 @@
 import { Html } from "@elysiajs/html";
-
-export type Todo = {
-    id: number;
-    content: string;
-    completed: boolean;
-};
+import type { Todo } from "../db/schema";
 
 export function TodoItem({ content, completed, id }: Todo) {
     return (

@@ -1,22 +1,11 @@
 import { t, Elysia } from "elysia";
 import { html, Html } from "@elysiajs/html";
-import { TodoList, type Todo, TodoItem } from "./components/todo";
+import { TodoList, TodoItem } from "./components/todo";
+import { db } from "./db/index";
+import { todos } from "./db/schema";
+import { eq } from "drizzle-orm";
 
 const app = new Elysia();
-
-let db: Todo[] = [
-    {
-        id: 1,
-        content: "learn jsx",
-        completed: false,
-    },
-    {
-        id: 2,
-        content: "learn js",
-        completed: true,
-    },
-];
-
 const baseHtml = (body: JSX.Element) => (
     <html lang="en">
         <head>
@@ -37,20 +26,18 @@ app.use(html());
 
 app.get("/", () => baseHtml(<div hx-get="/todos" hx-trigger="load"></div>));
 
-app.get("/todos", () => <TodoList todos={db} />);
+app.get("/todos", async () => {
+    const data = await db.select().from(todos).all();
+    return <TodoList todos={data} />;
+});
 
 app.post(
     "/todos",
-    ({ body }) => {
+    async ({ body }) => {
         const content = body.content;
 
         if (!content) return;
-        const newTodo = {
-            id: Date.now(),
-            content,
-            completed: false,
-        };
-        db.push(newTodo);
+        const newTodo = await db.insert(todos).values(body).returning().get();
         return <TodoItem {...newTodo} />;
     },
     { body: t.Object({ content: t.String() }) }
@@ -58,21 +45,28 @@ app.post(
 
 app.post(
     "/todos/toggle/:id",
-    ({ params }) => {
-        const todo = db.find((todo) => todo.id === params.id);
-        if (todo) {
-            todo.completed = !todo.completed;
-            console.log(db);
-            return <TodoItem {...todo} />;
-        }
+    async ({ params }) => {
+        const oldTodo = await db
+            .select()
+            .from(todos)
+            .where(eq(todos.id, params.id))
+            .get();
+        const newTodo = await db
+            .update(todos)
+            .set({ completed: !oldTodo?.completed })
+            .where(eq(todos.id, params.id))
+            .returning()
+            .get();
+
+        return <TodoItem {...newTodo} />;
     },
     { params: t.Object({ id: t.Numeric() }) }
 );
 
 app.delete(
     "/todos/:id",
-    ({ params }) => {
-        db = db.filter((todo) => todo.id !== params.id);
+    async ({ params }) => {
+        await db.delete(todos).where(eq(todos.id, params.id)).run();
 
         return;
     },
